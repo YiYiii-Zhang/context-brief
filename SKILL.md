@@ -72,6 +72,13 @@ description: >
 
 **hook 的职责**：读取 delta → 机械应用到 bridge.md 的 H2 段 + project 文件。模型只管写 delta，不用操心 bridge.md 的格式和去重。
 
+**代码约束**：Stop hook 必须兼容并消费以下 delta 入口，且相同 JSON 只应用一次：
+- `~/.claude/projects/-Users-yiyidexiaopingguo-Documents-test-claude/memory/_session-delta.json`
+- `~/.codex/memories/_session-delta.json`
+- `~/memory/_session-delta.json`
+
+已应用但残留的 delta 必须被清理；不得出现“文件还在，但 hook 说没有读取到 delta”的状态。
+
 ### 写入 _session-delta.json（主路径）
 
 **每次有实质性进展时必须写 `memory/_session-delta.json`**。这是唯一的「存」路径。
@@ -190,9 +197,13 @@ compile_context() → _last-context.md                (编译快照)
 1. 写 `memory/_session-delta.json`（包含本次 session 至今所有进展）
 2. 立刻跑 hook 脚本，让 project 文件也同步更新：
    `echo '{}' | python3 .claude/scripts/save-session-state.py`
-3. 告诉用户「已存入，project 文件也已同步」
+3. 立刻跑 doctor 自检：
+   `python3 .claude/scripts/context-brief-doctor.py --strict`
+4. 告诉用户「已存入，project 文件也已同步；doctor 自检通过」
 
 **为什么跑 hook**：delta 只更新 bridge.md，project 文件的同步需要 hook 的 `apply_session_delta()` + `sync_project_files_from_bridge()`。不跑 hook 的话 project 文件会滞后到 session 结束。
+
+**为什么跑 doctor**：doctor 会检查三套 delta 路径是否还有未消费或已应用残留、`_bridge.md`/`_last-context.md`/`context-brief.md` 是否刷新、bridge 六个核心段是否完整。doctor 不通过时，不能假装存档完成，必须先修。
 
 **注意**：
 - 这是显式的「只写」路径，和 session 结束时 hook 自动跑是两套保险
